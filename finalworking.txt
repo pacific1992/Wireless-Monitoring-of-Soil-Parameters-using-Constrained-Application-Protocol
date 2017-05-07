@@ -1,0 +1,250 @@
+SOIL PARAMETERS RECEIVE SERVER CODE
+
+ 
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include "contiki.h"
+#include "contiki-net.h"
+#include "isr_compat.h"
+#include "msp430.h"
+#include "dev/watchdog.h"
+void delay(long int);                      //Global Declarations
+void getdata();
+void deinit();
+void uartinit();
+
+#if !UIP_CONF_IPV6_RPL && !defined (CONTIKI_TARGET_MINIMAL_NET) && !defined (CONTIKI_TARGET_NATIVE)
+#warning "Compiling with static routing!"
+#include "static-routing.h"
+#endif
+
+#include "erbium.h"
+
+
+#if defined (PLATFORM_HAS_BUTTON)		/*Declarations Defining the components of the sensor node(mote) such as Button,leds,lights,battery and radio*/
+#include "dev/button-sensor.h"
+#endif
+#if defined (PLATFORM_HAS_LEDS)
+#include "dev/leds.h"
+#endif
+#if defined (PLATFORM_HAS_LIGHT)
+#include "dev/light-sensor.h"
+#endif
+#if defined (PLATFORM_HAS_BATTERY)
+#include "dev/battery-sensor.h"
+#endif
+#if defined (PLATFORM_HAS_SHT11)
+#include "dev/sht11-sensor.h"
+#endif
+#if defined (PLATFORM_HAS_RADIO)
+#include "dev/radio-sensor.h"
+#endif
+
+
+/* For CoAP-specific example: not required for normal RESTful Web service. Defining that coap 08 is compatible with this code*/
+#if WITH_COAP == 3
+#include "er-coap-03.h"
+#elif WITH_COAP == 7
+#include "er-coap-07.h"
+#else
+#warning "Erbium example without CoAP-specifc functionality"
+#endif /* CoAP-specific example */
+
+#define DEBUG 0		//Code needed for using printf statements
+#if DEBUG
+#define PRINTF(...) printf(__VA_ARGS__)
+#define PRINT6ADDR(addr) PRINTF("[%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x]", ((uint8_t *)addr)[0], ((uint8_t *)addr)[1], ((uint8_t *)addr)[2], ((uint8_t *)addr)[3], ((uint8_t *)addr)[4], ((uint8_t *)addr)[5], ((uint8_t *)addr)[6], ((uint8_t *)addr)[7], ((uint8_t *)addr)[8], ((uint8_t *)addr)[9], ((uint8_t *)addr)[10], ((uint8_t *)addr)[11], ((uint8_t *)addr)[12], ((uint8_t *)addr)[13], ((uint8_t *)addr)[14], ((uint8_t *)addr)[15])
+#define PRINTLLADDR(lladdr) PRINTF("[%02x:%02x:%02x:%02x:%02x:%02x]",(lladdr)->addr[0], (lladdr)->addr[1], (lladdr)->addr[2], (lladdr)->addr[3],(lladdr)->addr[4], (lladdr)->addr[5])
+#else
+#define PRINTF(...)
+#define PRINT6ADDR(addr)
+#define PRINTLLADDR(addr)
+#endif
+
+char dest[30];
+int de = 0, ec = 0, tp =0,dec=0,edec=0,dep=0,det=0;// declaring the soil parameter variables
+char msg[11]="55 128 600";
+static int l;
+/* A simple actuator example. Toggles the red led */
+RESOURCE(toggle, METHOD_GET , "receive", "title=\"Red LED\";rt=\"Control\"");		//Receive resource defined here
+void
+toggle_handler(void* request, void* response, uint8_t *buffer, uint16_t preferred_size, int32_t *offset)
+{
+	
+	printf("entered resource\n");
+	uartinit();
+	
+	P2OUT |= BIT3;				//Selection of a GPIO pin
+	l=0;
+	
+	delay(150000);				// A delay is given for 								triggering the sensor
+	P2OUT ^= BIT3;				//Excitation of a GPIO pin 
+	printf("%s\n",dest);
+	getdata();
+	
+	deinit();
+
+	REST.set_header_content_type(response, REST.type.APPLICATION_XML);	//To Display the data in the Copper Add-on in the Mozilla Firefox Web Browser
+        snprintf((char *)buffer, REST_MAX_CHUNK_SIZE, "Dielectric= %d.%d\nElectrical conductivity= %d.%d\nTemperature= %d.%d\n",de,dep,ec,edec,tp,dec);
+
+        REST.set_response_payload(response, buffer, strlen((char *)buffer));
+  
+	//delay(100000);
+	printf("exit resource\n");
+	
+}
+
+
+PROCESS(rest_server_example, "Erbium Example Server");
+AUTOSTART_PROCESSES(&rest_server_example);
+
+
+PROCESS_THREAD(rest_server_example, ev, data)
+{
+  PROCESS_BEGIN();
+
+  PRINTF("Starting Erbium Example Server\n");
+
+#ifdef RF_CHANNEL
+  PRINTF("RF channel: %u\n", RF_CHANNEL);
+#endif
+#ifdef IEEE802154_PANID
+  PRINTF("PAN ID: 0x%04X\n", IEEE802154_PANID);
+#endif
+
+  PRINTF("uIP buffer: %u\n", UIP_BUFSIZE);
+  PRINTF("LL header: %u\n", UIP_LLH_LEN);
+  PRINTF("IP+UDP header: %u\n", UIP_IPUDPH_LEN);
+  PRINTF("REST max chunk: %u\n", REST_MAX_CHUNK_SIZE);
+
+/* if static routes are used rather than RPL */
+#if !UIP_CONF_IPV6_RPL && !defined (CONTIKI_TARGET_MINIMAL_NET) && !defined (CONTIKI_TARGET_NATIVE)
+  set_global_address();
+  configure_routing();
+#endif
+
+  /* Initialize the REST engine. */
+  rest_init_engine();
+
+ 
+	
+	rest_activate_resource(&resource_toggle);	//Activate the resource
+	
+	
+	
+  while(1) {
+printf("enters while\n");
+    PROCESS_WAIT_EVENT(); 
+printf("repeat while\n");
+      } /* while (1) */
+
+  PROCESS_END();
+}
+
+ISR(UART0RX,uart0_rx_interrupt)		//Interrupt Service Routine
+{
+	
+	//printf("%c",RXBUF0);
+	if(l<15)
+	{
+	dest[l-1] = RXBUF0;
+l++;
+}
+IFG1 &= ~URXIFG0;
+return;
+
+}
+
+void uartinit()
+{
+	WDTCTL = WDTPW + WDTHOLD;
+	P3SEL |= 0x20;				//Select UART0 Transmit and Receive        
+	P3DIR &= ~0x20;                      	//Make URXD0 as input        
+		        
+		               	       
+	ME1 |= URXE0;				//module enable         
+	U0CTL = CHAR;				//Select 8 bit transceive mode        
+	U0TCTL = 147;				//ACLK = UCLK        
+	//U0RCTL = 0x00;        
+	U0BR0=0x1b;				//Baud rate register        
+	U0BR1=0x00;        
+	U0MCTL=0x24;				//Modulation control register        
+	U0CTL &= ~SWRST;			//UART Software Reset			      	
+	IE1 = URXIE0;				//Enable Receive Interrrupt
+	P2SEL &= (~BIT3);			//Select Port 2 
+	P2DIR |= BIT3;				
+}
+
+void delay(long int n)
+{
+	long int i;
+	for(i=0;i<n;i++)
+	_NOP();
+}
+
+void getdata()					//Function for receiving Sensor Data and converting ASCII to Decimal
+{
+	
+	int k=0;
+	de = 0;
+	tp = 0;
+	ec = 0;
+	
+	while(dest[k]!=32)
+	{
+		de = de*10 + (dest[k] - 48);
+		k++;
+	}
+	k++;
+	while(dest[k]!=32)
+	{
+		ec = ec*10 + (dest[k] - 48);
+		k++;
+	}
+	k++;
+	while(dest[k]!=0x0D)
+	{
+		tp = tp*10 + (dest[k] - 48);
+		k++;
+	}
+	
+	printf("%d,%d,%d\n",de,ec,tp);
+	det=de % 50;		
+	dep=(det * 10)/50;	
+	de = de/50;
+	edec=ec%100;
+	ec = ec/100;
+	dec = tp % 10;
+	tp = (tp-400)/10;
+	printf("%d,%d,%d.%d\n",de,ec,tp,dec);
+	P2SEL &= (~BIT6);
+	P2DIR |= BIT6;
+	if(tp>28)
+	{
+	P2OUT |=BIT6;
+	}
+	else
+	P2OUT = 0 ;
+}
+
+void deinit()				//De-initialization which helps in Displaying the data on the Copper Add on in Mozilla Firefox Browser
+{
+	U0BR0=0x02;	
+			
+        U0BR1=0x00;
+
+        U0MCTL=0x00;
+	
+	
+	IFG1 = 130;
+	
+	
+	
+	
+	
+	U0TCTL = 163;
+	//U0RCTL = 0;
+	IE1 = WDTIE;
+	U0CTL = 22;
+}

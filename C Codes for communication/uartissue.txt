@@ -1,0 +1,130 @@
+#include<msp430.h>
+
+#include "dev/leds.h"
+
+#include<stdio.h>
+
+#include "contiki.h"
+
+#include "isr_compat.h"
+ISR(UART0RX,uart0_rx_interrupt)
+
+{
+printf("entered ISR\n");
+        unsigned char d;
+	printf("IFG1=%d \nURXIFG0=%d\n",IFG1,URXIFG0);
+        d=RXBUF0;             
+	printf("%c\n",d); 
+        if(!(IFG1 & URXIFG0))
+        {
+printf("U0TCTL=%d\n",U0TCTL);
+printf("URXSE=%d\n",URXSE);
+           U0TCTL &= ~URXSE;
+printf("U0TCTL=%d\n",U0TCTL);
+printf("URXSE=%d\n",URXSE);
+          U0TCTL |= URXSE;
+printf("U0TCTL=%d\n",U0TCTL);
+printf("URXSE=%d\n",URXSE);
+               
+                leds_toggle(LEDS_GREEN);
+                printf("RXBUF0=%c\n",RXBUF0);
+        }
+
+        else{
+				printf("");
+                        
+                                if(URCTL0 & RXERR )
+                                        {
+	
+                                                leds_on(LEDS_GREEN);
+                                        
+                                        }
+                                                else{
+
+                                                leds_on(LEDS_GREEN);
+                                                        
+                                                      }
+                                        IFG1 &=~URXIFG0;
+        }
+
+}
+ void uart0_init()
+{
+	int a;
+	a=RXBUF0;
+	printf("a=%c\n",a);
+
+	printf("entered initialization\n");
+	WDTCTL=WDTPW+WDTHOLD;
+        P3SEL |= 0x30;
+printf("P3SEL=%d\n",P3SEL);
+        P3DIR &= ~0x20;  
+printf("P3DIR=%d\n",P3DIR);                     
+        P3DIR |= 0x10;  
+printf("P3DIR=%d\n",P3DIR);  
+printf("P3OUT=%d\n",P3OUT);
+	P3OUT |= 0x10;
+printf("P3OUT=%d\n",P3OUT);     
+      	ME1 |= URXE0 + UTXE0;
+printf("ME1=%d\n",ME1);
+        U0CTL = 0x18;
+printf("U0CTL=%d\n",U0CTL);
+        U0TCTL = 0x93;
+printf("U0TCTL=%d\n",U0TCTL);
+printf("U0RCTL=%d\n",U0RCTL);
+        U0RCTL=0;
+printf("U0RCTL=%d\n",U0RCTL);
+        U0BR0=0x03;
+printf("U0BR0=%d\n",U0BR0);
+        U0BR1=0x00;
+printf("U0BR1=%d\n",U0BR1);
+        U0MCTL=0x4a;
+printf("U0MCTL=%d\n",U0MCTL);
+        U0CTL &= ~SWRST;
+printf("U0CTL=%d\n",U0CTL);
+       printf("prashant\n");
+        _BIS_SR(GIE);
+printf("GIE=%d\n",GIE);
+printf("IE1=%d\n",IE1);
+	
+	IE1 |=UTXIE0+URXIE0;
+printf("IE1=%d\n",IE1);
+	
+	printf("exit init\n");
+	
+}
+
+
+
+void uart0_send_data()
+{
+int i;
+ 	printf("entered transmit funtion\n");
+printf("IFG1=%d\n",IFG1);
+               while((IFG1 & UTXIFG0));
+               TXBUF0 = 0x41;
+
+		printf("TXBUF0=%c\n",TXBUF0);
+ 
+               while((IFG1 & UTXIFG0));
+               TXBUF0 = 0x42;
+
+printf("T2XBUF0=%c\n",TXBUF0);
+ 
+}
+
+
+PROCESS(uart_check,"uart-communication");
+AUTOSTART_PROCESSES(&uart_check);
+
+PROCESS_THREAD(uart_check,ev,data)
+{
+printf("main program begins\n");
+PROCESS_BEGIN();
+printf("will enter init fn\n ");
+uart0_init();
+printf("will enter transmit fn\n");
+uart0_send_data();
+printf("the process has ended\n");
+PROCESS_END();
+}

@@ -1,0 +1,29 @@
+#include<stdio.h>
+
+
+
+	WDTCTL=WDTPW+WDTHOLD;			//Stop Watch Dog Timer
+	
+        P3SEL |= 0x30;				//Select UART0 Transmit and Receive
+
+        P3DIR &= ~0x20;                      	//Make URXD0 as input
+
+        P3DIR |= 0x10;                       	//make UTCD0 as output
+
+        P3OUT |= 0x10;                       	
+        ME1 |= UTXE0 + URXE0;			//module enable 
+
+        U0CTL = CHAR;				//Select 8 bit transceive mode
+
+        U0TCTL = SSEL0;				//ACLK = UCLK
+        U0RCTL |= 0x00;
+        U0BR0=0x1b;				//Baud rate register
+        U0BR1=0x00;
+        U0MCTL=0x24;				//Modulation control register
+        U0CTL &= ~SWRST;			
+      
+	IE1 = URXIE0+UTXIE0;			//Enable receive and transmit interrupt
+	
+	
+	_BIS_SR(GIE);
+	

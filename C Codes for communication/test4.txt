@@ -1,0 +1,116 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include "contiki.h"
+#include "contiki-net.h"
+
+#if !UIP_CONF_IPV6_RPL && !defined (CONTIKI_TARGET_MINIMAL_NET) && !defined (CONTIKI_TARGET_NATIVE)
+#warning "Compiling with static routing!"
+#include "static-routing.h"
+#endif
+
+#include "erbium.h"
+
+
+#if defined (PLATFORM_HAS_BUTTON)
+#include "dev/button-sensor.h"
+#endif
+#if defined (PLATFORM_HAS_LEDS)
+#include "dev/leds.h"
+#endif
+#if defined (PLATFORM_HAS_LIGHT)
+#include "dev/light-sensor.h"
+#endif
+#if defined (PLATFORM_HAS_BATTERY)
+#include "dev/battery-sensor.h"
+#endif
+#if defined (PLATFORM_HAS_SHT11)
+#include "dev/sht11-sensor.h"
+#endif
+#if defined (PLATFORM_HAS_RADIO)
+#include "dev/radio-sensor.h"
+#endif
+
+
+/* For CoAP-specific example: not required for normal RESTful Web service. */
+#if WITH_COAP == 3
+#include "er-coap-03.h"
+#elif WITH_COAP == 7
+#include "er-coap-07.h"
+#else
+#warning "Erbium example without CoAP-specifc functionality"
+#endif /* CoAP-specific example */
+
+
+RESOURCE(helloworld, METHOD_GET, "hello", "title=\"Hello world: ?len=0..\";rt=\"Text\"");
+
+void
+helloworld_handler(void* request, void* response, uint8_t *buffer, uint16_t preferred_size, int32_t *offset)
+{
+  const char *len = NULL;
+  /* Some data that has the length up to REST_MAX_CHUNK_SIZE. For more, see the chunk resource. */
+  char const * const message = "Hello World! ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxy";
+  int length = 12; /*           |<-------->| */
+
+  /* The query string can be retrieved by rest_get_query() or parsed for its key-value pairs. */
+  if (REST.get_query_variable(request, "len", &len)) {
+    length = atoi(len);
+    if (length<0) length = 0;
+    if (length>REST_MAX_CHUNK_SIZE) length = REST_MAX_CHUNK_SIZE;
+    memcpy(buffer, message, length);
+  } else {
+    memcpy(buffer, message, length);
+  }
+
+  /*REST.set_header_content_type(response, REST.type.TEXT_PLAIN); /* text/plain is the default, hence this option could be omitted. */
+  REST.set_header_etag(response, (uint8_t *) &length, 1);
+  REST.set_response_payload(response, buffer, length);
+}
+
+
+RESOURCE(toggle, METHOD_GET | METHOD_PUT | METHOD_POST, "actuators/toggle", "title=\"Red LED\";rt=\"Control\"");
+void
+toggle_handler(void* request, void* response, uint8_t *buffer, uint16_t preferred_size, int32_t *offset)
+{
+  leds_toggle(LEDS_GREEN);
+	leds_toggle(LEDS_RED);
+leds_toggle(LEDS_BLUE);
+}
+
+
+PROCESS(rest_server_example, "Erbium Example Server");
+AUTOSTART_PROCESSES(&rest_server_example);
+
+PROCESS_THREAD(rest_server_example, ev, data)
+{
+  PROCESS_BEGIN();
+
+ 
+
+  
+/* if static routes are used rather than RPL */
+#if !UIP_CONF_IPV6_RPL && !defined (CONTIKI_TARGET_MINIMAL_NET) && !defined (CONTIKI_TARGET_NATIVE)
+  set_global_address();
+  configure_routing();
+#endif
+
+  /* Initialize the REST engine. */
+  rest_init_engine();
+
+  /* Activate the application-specific resources. */
+
+  rest_activate_resource(&resource_helloworld);
+rest_activate_resource(&resource_toggle);
+
+ while(1) 
+{
+    PROCESS_WAIT_EVENT();
+
+
+
+    
+} /* while (1) */
+
+
+ PROCESS_END();
+}
